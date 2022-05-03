@@ -10,6 +10,9 @@
     "string": "cpp",
     "typeinfo": "cpp",
     "variant": "cpp",
-    "vector": "cpp"
+    "vector": "cpp",
+    "type_traits": "cpp",
+    "__node_handle": "cpp",
+    "array": "cpp"
   }
 }
