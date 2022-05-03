@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bsl/empty.h>
 #include <config.h>
 
 #include <concepts>
@@ -9,45 +10,60 @@ namespace bsl {
 
 // pre-declare
 
+template <typename _Tv>
 class cdlln_t;
+template <typename _Tv>
 class cdll_t;
-template <typename Tp>
-concept is_cdlln =
-    std::is_same_v<std::remove_const_t<std::remove_pointer_t<Tp>>, cdlln_t>;
-template <is_cdlln Tp>
+template <typename _Tp>
 class cdll_itr;
-template <is_cdlln Tp>
+template <typename _Tp>
 class cdll_ritr;
-template <typename Iterator, is_cdlln Tp>
+template <typename Iterator, typename _Tp>
 class cdll_itr_base;
 
 // circular doubly linked list node
+template <typename _Tv = empty_t>
 class cdlln_t {
-  template <typename Iterator, is_cdlln Tp>
+  using type = cdlln_t<_Tv>;
+
+  template <typename Iterator, typename _Tp>
   friend class cdll_itr_base;
-  template <is_cdlln Tp>
+  template <typename _Tp>
   friend class cdll_itr;
-  template <is_cdlln Tp>
+  template <typename _Tp>
   friend class cdll_ritr;
+  template <typename _Tp>
   friend class cdll_t;
 
  protected:
-  cdlln_t *prev = nullptr;
-  cdlln_t *next = nullptr;
+  type *prev = nullptr;
+  type *next = nullptr;
 
  public:
+  [[no_unique_address]] _Tv val;
   cdlln_t() noexcept = default;
+  // this might fail to instantiate if copy or move constructor is used, since
+  // deleted
+  template <typename... Args>
+  cdlln_t(Args &&...args) noexcept(noexcept(_Tv(std::forward<Args>(args)...)))
+      : val(std::forward<Args>(args)...) {}
+  // no copy and move
+  cdlln_t(const type &) = delete;
+  cdlln_t(type &&) = delete;
+  type &operator=(const type &) = delete;
+  type &operator=(type &&) = delete;
+
   void unlink() noexcept {
     prev->next = next;
     next->prev = prev;
   }
-  void push_back(cdlln_t *node) noexcept {
+  void push_back(type *node) noexcept {
     node->prev = prev;
     node->next = this;
     prev->next = node;
     prev = node;
   }
-  void push_front(cdlln_t *node) noexcept {
+  void push_front(type *node) noexcept {
     node->prev = this;
     node->next = next;
     next->prev = node;
@@ -55,23 +71,24 @@ class cdlln_t {
   }
 };
 
-// using template to avoid duplicate code for const iterator
-// and CRTP to avoid duplicate code for reverse iterator
+// use CRTP to avoid duplicate code for reverse iterator
 
-template <typename Iterator, is_cdlln Tp>
+// iterator base for circular doubly linked list
+template <typename Iterator, typename _Tp>
 class cdll_itr_base {
+  using type = cdll_itr_base<Iterator, _Tp>;
   friend Iterator;
 
  protected:
-  Tp node = nullptr;
+  _Tp *node = nullptr;
 
  public:
   cdll_itr_base() noexcept = default;
-  cdll_itr_base(const cdll_itr_base &) noexcept = default;
-  cdll_itr_base &operator=(const cdll_itr_base &) noexcept = default;
-  cdll_itr_base(cdll_itr_base &&) noexcept = default;
-  cdll_itr_base &operator=(cdll_itr_base &&) noexcept = default;
-  cdll_itr_base(Tp node) noexcept : node(node) {}
+  cdll_itr_base(const type &) noexcept = default;
+  cdll_itr_base &operator=(const type &) noexcept = default;
+  cdll_itr_base(type &&) noexcept = default;
+  cdll_itr_base &operator=(type &&) noexcept = default;
+  cdll_itr_base(_Tp *node) noexcept : node(node) {}
 
   Iterator operator++(int) noexcept {
     Iterator tmp = *this;
@@ -83,7 +100,7 @@ class cdll_itr_base {
     --*this;
     return tmp;
   }
-  Iterator operator+(int n) noexcept {
+  Iterator operator+(const int n) noexcept {
     if (n >= 0) {
       for (int i = 0; i < n; ++i) {
         ++*this;
@@ -98,65 +115,74 @@ class cdll_itr_base {
   bool operator==(const Iterator &rhs) const noexcept {
     return node == rhs.node;
   }
-  std::remove_pointer_t<Tp> &operator*() const noexcept { return *node; }
-  Tp operator->() const noexcept { return node; }
+  _Tp &operator*() const noexcept { return *node; }
+  _Tp *operator->() const noexcept { return node; }
 };
 
-template <is_cdlln Tp>
-class cdll_itr : public cdll_itr_base<cdll_itr<Tp>, Tp> {
+template <typename _Tp>
+class cdll_itr : public cdll_itr_base<cdll_itr<_Tp>, _Tp> {
  private:
-  using base = cdll_itr_base<cdll_itr<Tp>, Tp>;
+  using type = cdll_itr<_Tp>;
+  using base = cdll_itr_base<cdll_itr<_Tp>, _Tp>;
 
  public:
   cdll_itr() noexcept = default;
   template <typename... Args>
   cdll_itr(Args &&...args) noexcept : base(std::forward<Args>(args)...) {}
-  cdll_itr &operator++() noexcept {
+  type &operator++() noexcept {
     static_cast<base *>(this)->node = static_cast<base *>(this)->node->next;
     return *this;
   }
-  cdll_itr &operator--() noexcept {
+  type &operator--() noexcept {
     static_cast<base *>(this)->node = static_cast<base *>(this)->node->prev;
     return *this;
   }
 };
 
-template <is_cdlln Tp>
-class cdll_ritr : public cdll_itr_base<cdll_ritr<Tp>, Tp> {
+template <typename _Tp>
+class cdll_ritr : public cdll_itr_base<cdll_ritr<_Tp>, _Tp> {
  private:
-  using base = cdll_itr_base<cdll_ritr<Tp>, Tp>;
+  using type = cdll_ritr<_Tp>;
+  using base = cdll_itr_base<cdll_ritr<_Tp>, _Tp>;
 
  public:
   cdll_ritr() noexcept = default;
   template <typename... Args>
   cdll_ritr(Args &&...args) noexcept : base(std::forward<Args>(args)...) {}
-  cdll_ritr &operator--() noexcept {
-    static_cast<base *>(this)->node = static_cast<base *>(this)->node->next;
+  type &operator++() noexcept {
+    static_cast<base *>(this)->node = static_cast<base *>(this)->node->prev;
     return *this;
   }
-  cdll_ritr &operator++() noexcept {
-    static_cast<base *>(this)->node = static_cast<base *>(this)->node->prev;
+  type &operator--() noexcept {
+    static_cast<base *>(this)->node = static_cast<base *>(this)->node->next;
     return *this;
   }
 };
 
 // circular doubly linked list
+template <typename _Tv = empty_t>
 class cdll_t {
+  using type = cdll_t<_Tv>;
+  using node_type = cdlln_t<_Tv>;
+  using empty_type = cdlln_t<empty_t>;
+
  private:
-  cdlln_t head;
+  empty_type head;
 
  public:
   cdll_t() noexcept = default;
-  cdll_t(const cdll_t &) = delete;
-  cdll_t &operator=(const cdll_t &) = delete;
+  cdll_t(const type &) = delete;
+  type &operator=(const type &) = delete;
   void init() noexcept {
     head.next = &head;
     head.prev = &head;
   }
   [[nodiscard]] bool empty() const noexcept { return head.next == &head; }
-  void push_back(cdlln_t *node) noexcept { head.push_back(node); }
-  void push_back(cdlln_t &node) noexcept { push_back(&node); }
-  void push_back(cdll_t &list) noexcept {
+  void push_back(node_type *node) noexcept {
+    head.push_back(reinterpret_cast<empty_type *>(node));
+  }
+  void push_back(node_type &node) noexcept { push_back(&node); }
+  void push_back(type &list) noexcept {
     if (list.empty()) {
       return;
     }
@@ -166,18 +192,20 @@ class cdll_t {
     list.head.prev->next = &head;
     list.init();
   }
-  cdlln_t *pop_back() noexcept {
+  node_type *pop_back() noexcept {
     if (empty()) [[unlikely]] {
-      return (cdlln_t *)PTR_FAIL;
+      return (node_type *)PTR_FAIL;
     }
-    cdlln_t *node = head.prev;
+    empty_type *node = head.prev;
     head.prev = node->prev;
     head.prev->next = &head;
-    return node;
+    return reinterpret_cast<node_type *>(node);
   }
-  void push_front(cdlln_t *node) noexcept { head.push_front(node); }
-  void push_front(cdlln_t &node) noexcept { push_front(&node); }
-  void push_front(cdll_t &list) noexcept {
+  void push_front(node_type *node) noexcept {
+    head.push_front(reinterpret_cast<empty_type *>(node));
+  }
+  void push_front(node_type &node) noexcept { push_front(&node); }
+  void push_front(type &list) noexcept {
     if (list.empty()) {
       return;
     }
@@ -187,38 +215,51 @@ class cdll_t {
     list.head.next->prev = &head;
     list.init();
   }
-  cdlln_t *pop_front() noexcept {
+  node_type *pop_front() noexcept {
     if (empty()) [[unlikely]] {
-      return (cdlln_t *)PTR_FAIL;
+      return (node_type *)PTR_FAIL;
     }
-    cdlln_t *node = head.next;
+    empty_type *node = head.next;
     head.next = node->next;
     head.next->prev = &head;
-    return node;
+    return reinterpret_cast<node_type *>(node);
   }
-  [[nodiscard]] cdlln_t *back() const noexcept { return head.prev; }
-  [[nodiscard]] cdlln_t *front() const noexcept { return head.next; }
-  [[nodiscard]] auto begin() noexcept { return cdll_itr<cdlln_t *>(head.next); }
+  [[nodiscard]] node_type *back() const noexcept {
+    return reinterpret_cast<node_type *>(head.prev);
+  }
+  [[nodiscard]] node_type *front() const noexcept {
+    return reinterpret_cast<node_type *>(head.next);
+  }
+  [[nodiscard]] auto begin() noexcept {
+    return cdll_itr<node_type>(reinterpret_cast<node_type *>(head.next));
+  }
   [[nodiscard]] auto begin() const noexcept {
-    return cdll_itr<const cdlln_t *>(head.next);
+    return cdll_itr<const node_type>(
+        reinterpret_cast<const node_type *>(head.next));
   }
-  [[nodiscard]] auto end() noexcept { return cdll_itr<cdlln_t *>(&head); }
+  [[nodiscard]] auto end() noexcept {
+    return cdll_itr<node_type>(reinterpret_cast<node_type *>(&head));
+  }
   [[nodiscard]] auto end() const noexcept {
-    return cdll_itr<const cdlln_t *>(&head);
+    return cdll_itr<const node_type>(
+        reinterpret_cast<const node_type *>(&head));
   }
   [[nodiscard]] auto rbegin() noexcept {
-    return cdll_ritr<cdlln_t *>(head.prev);
+    return cdll_ritr<node_type>(reinterpret_cast<node_type *>(head.prev));
   }
   [[nodiscard]] auto rbegin() const noexcept {
-    return cdll_ritr<const cdlln_t *>(head.prev);
+    return cdll_ritr<const node_type>(
+        reinterpret_cast<const node_type *>(head.prev));
   }
-  [[nodiscard]] auto rend() noexcept { return cdll_ritr<cdlln_t *>(&head); }
+  [[nodiscard]] auto rend() noexcept {
+    return cdll_ritr<node_type>(reinterpret_cast<node_type *>(&head));
+  }
   [[nodiscard]] auto rend() const noexcept {
-    return cdll_ritr<const cdlln_t *>(&head);
+    return cdll_ritr<const node_type>(reinterpret_cast<const node_type>(&head));
   }
   [[nodiscard]] uint64_t size() const noexcept {
     uint64_t size = 0;
-    for (auto itr : *this) {
+    for (auto &itr : *this) {
       ++size;
     }
     return size;
