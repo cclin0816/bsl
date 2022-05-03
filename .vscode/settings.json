@@ -1,0 +1,15 @@
+{
+  "files.associations": {
+    "*.wsb": "xml",
+    "*.h": "cpp",
+    "cstdlib": "cpp",
+    "exception": "cpp",
+    "ios": "cpp",
+    "optional": "cpp",
+    "stdexcept": "cpp",
+    "string": "cpp",
+    "typeinfo": "cpp",
+    "variant": "cpp",
+    "vector": "cpp"
+  }
+}
