@@ -7,17 +7,15 @@ operations on cdll_t (list) and cdll_(r)itr (iterator) are for cdlln_t (node),
 though underlying types can still be accessed through cdlln_t
 
 This is made since raw pointer linked list (which is extensively used in OS,
-libc ...) are not viable in stdandard library
+libc ...) are not viable in stdandard library, since used as raw pointer linked
+list, move and copy semantics are not supported, and regard of bare metal usage,
+default construct is zero initialized, call init or use in_place to initialize
 
 Still, the functionallity of cdll_t is similar to std::list,
 the main difference is that cdll_t is not a container, since it doesn't owns the
-nodes nodes need to be created and destroyed manually, or when using stack as
+nodes, nodes need to be created and destroyed manually, or when using stack as
 underlying storage, push after lifetime starts, then pop before lifetime ends,
-or else it will cause undefined behavior
-
-Since it might be used as raw pointer linked list, move and copy semantics are
-not supported, and regard of bare metal usage, default construct is zero
-initialized, call init before using
+or else it causes undefined behavior
 */
 
 #include <bsl/empty.h>
@@ -58,11 +56,9 @@ class cdlln_t {
   using type = cdlln_t<Tval>;
   using value_type = Tval;
 
- protected:
+ private:
   type *prev = nullptr;
   type *next = nullptr;
-
- private:
   [[no_unique_address]] value_type val{};
 
  public:
@@ -86,7 +82,7 @@ class cdlln_t {
   /**
    * @brief unlink node from list
    */
-  void unlink() noexcept {
+  void unlink() &noexcept {
     prev->next = next;
     next->prev = prev;
   }
@@ -95,35 +91,46 @@ class cdlln_t {
    * @brief insert node after this node
    * @param node node to insert
    */
-  void push_back(type *node) noexcept {
+  void push_back(type *node) &noexcept {
     node->prev = prev;
     node->next = this;
     prev->next = node;
     prev = node;
+  }
+  void push_back(type &node) &noexcept { push_back(&node); }
+  void push_back(void *node) &noexcept {
+    push_back(reinterpret_cast<type *>(node));
   }
 
   /**
    * @brief insert node before this node
    * @param node node to insert
    */
-  void push_front(type *node) noexcept {
+  void push_front(type *node) &noexcept {
     node->prev = this;
     node->next = next;
     next->prev = node;
     next = node;
+  }
+  void push_front(type &node) &noexcept { push_front(&node); }
+  void push_front(void *node) &noexcept {
+    push_front(reinterpret_cast<type *>(node));
   }
 
   /**
    * @brief get value
    * @return value
    */
-  value_type &value() noexcept { return val; }
+  [[nodiscard]] value_type &value() noexcept { return val; }
+  [[nodiscard]] const value_type &value() const noexcept { return val; }
 
   /**
    * @brief get base pointer
    * @return base pointer
    */
-  void *base() noexcept { return reinterpret_cast<void *>(this); }
+  [[nodiscard]] void *base() &noexcept {
+    return reinterpret_cast<void *>(this);
+  }
 };
 
 // iterator base for circular doubly linked list
@@ -138,7 +145,6 @@ class cdll_itr_base {
   using type = cdll_itr_base<iterator, Tnode>;
   using node_type = Tnode;
   using value_type = node_type;
-  // using node_type_remove_const = std::remove_const<node_type>::type;
 
  protected:
   node_type *node = nullptr;
@@ -172,7 +178,6 @@ class cdll_itr_base {
   friend bool operator==(const iterator &lhs, const iterator &rhs) noexcept {
     return lhs.node == rhs.node;
   }
-  bool operator==(const node_type *rhs) const noexcept { return node == rhs; }
   node_type &operator*() const noexcept { return *node; }
   node_type *operator->() const noexcept { return node; }
   operator node_type *() const noexcept { return node; }
@@ -201,12 +206,12 @@ class cdll_itr : public cdll_itr_base<cdll_itr<Tnode>, Tnode> {
     base_type::node = base_type::node->prev;
     return *this;
   }
-  type operator++(int) noexcept {
+  type operator++(int) &noexcept {
     type itr = *this;
     ++*this;
     return itr;
   }
-  type operator--(int) noexcept {
+  type operator--(int) &noexcept {
     type itr = *this;
     --*this;
     return itr;
@@ -236,12 +241,12 @@ class cdll_ritr : public cdll_itr_base<cdll_ritr<Tnode>, Tnode> {
     base_type::node = base_type::node->next;
     return *this;
   }
-  type operator++(int) noexcept {
+  type operator++(int) &noexcept {
     type itr = *this;
     ++*this;
     return itr;
   }
-  type operator--(int) noexcept {
+  type operator--(int) &noexcept {
     type itr = *this;
     --*this;
     return itr;
@@ -266,25 +271,24 @@ class cdll_t {
 
  public:
   cdll_t() noexcept = default;
+  void init() noexcept {
+    head.next = &head;
+    head.prev = &head;
+  }
+  cdll_t(in_place_t) noexcept { init(); }
   cdll_t(const type &) = delete;
   type &operator=(const type &) = delete;
   cdll_t(type &&) = delete;
   type &operator=(type &&) = delete;
 
-  void init() noexcept {
-    head.next = &head;
-    head.prev = &head;
-  }
-
   [[nodiscard]] bool empty() const noexcept { return head.next == &head; }
 
-  void push_back(node_type *node) noexcept {
+  void push_back(node_type *node) &noexcept {
     head.push_back(reinterpret_cast<empty_type *>(node));
   }
-
-  void push_back(node_type &node) noexcept { push_back(&node); }
-
-  void push_back(type &list) noexcept {
+  void push_back(node_type &node) &noexcept { push_back(&node); }
+  void push_back(void *node) &noexcept { head.push_back(node); }
+  void push_back(type &list) &noexcept {
     if (list.empty()) {
       return;
     }
@@ -299,7 +303,7 @@ class cdll_t {
    * @brief pop node from the back of the list
    * @return node_type* pointer to node, PTR_FAIL if list is empty
    */
-  node_type *pop_back() noexcept {
+  node_type *pop_back() &noexcept {
     if (empty()) [[unlikely]] {
       return (node_type *)PTR_FAIL;
     }
@@ -309,13 +313,12 @@ class cdll_t {
     return reinterpret_cast<node_type *>(node);
   }
 
-  void push_front(node_type *node) noexcept {
+  void push_front(node_type *node) &noexcept {
     head.push_front(reinterpret_cast<empty_type *>(node));
   }
-
-  void push_front(node_type &node) noexcept { push_front(&node); }
-
-  void push_front(type &list) noexcept {
+  void push_front(node_type &node) &noexcept { push_front(&node); }
+  void push_front(void *node) &noexcept { head.push_front(node); }
+  void push_front(type &list) &noexcept {
     if (list.empty()) {
       return;
     }
@@ -330,7 +333,7 @@ class cdll_t {
    * @brief pop node from the front of the list
    * @return node_type* pointer to node, PTR_FAIL if list is empty
    */
-  node_type *pop_front() noexcept {
+  node_type *pop_front() &noexcept {
     if (empty()) [[unlikely]] {
       return (node_type *)PTR_FAIL;
     }
@@ -389,11 +392,11 @@ class cdll_t {
   }
 
   [[nodiscard]] const_reverse_iterator rend() const noexcept {
-    return {reinterpret_cast<const node_type>(&head)};
+    return {reinterpret_cast<const node_type *>(&head)};
   }
 
   [[nodiscard]] const_reverse_iterator crend() const noexcept {
-    return {reinterpret_cast<const node_type>(&head)};
+    return {reinterpret_cast<const node_type *>(&head)};
   }
 
   /**
@@ -402,7 +405,7 @@ class cdll_t {
    */
   [[nodiscard]] uint64_t size() const noexcept {
     uint64_t size = 0;
-    for (auto &itr : *this) {
+    for ([[maybe_unused]] auto &itr : *this) {
       ++size;
     }
     return size;
